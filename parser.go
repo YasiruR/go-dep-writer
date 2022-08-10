@@ -9,11 +9,19 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
-var depChan chan dependency
+const (
+	termSignal = `terminate`
+)
 
-func fetchDeps(fileName string) (deps []dependency) {
+var (
+	depChan chan dependency
+	urlList []string
+)
+
+func parse(fileName string) {
 	f, err := os.Open(fileName)
 	if err != nil {
 		log.Fatalln(err)
@@ -21,44 +29,54 @@ func fetchDeps(fileName string) (deps []dependency) {
 	defer f.Close()
 
 	scanner := bufio.NewScanner(f)
+	wg := &sync.WaitGroup{}
+
 	for scanner.Scan() {
 		text := scanner.Text()
-		// skip if it is a blank line
-		if len(text) == 0 {
-			continue
-		}
+		wg.Add(1)
+		go func(wg *sync.WaitGroup, text string) {
+			defer wg.Done()
+			// skip if it is a blank line
+			if len(text) == 0 {
+				return
+			}
 
-		words := strings.Split(text, ` `)
-		if len(words) < 2 {
-			continue
-		}
+			words := strings.Split(text, ` `)
+			if len(words) < 2 {
+				return
+			}
 
-		if words[0] == `module` {
-			continue
-		}
+			if words[0] == `module` {
+				return
+			}
 
-		// add go version to table later
-		if words[0] == `go` {
-			continue
-		}
+			// add go version to table later
+			if words[0] == `go` {
+				return
+			}
 
-		dep, ok := singleRequire(words)
-		if ok {
-			depChan <- *dep
-			continue
-		}
+			dep, ok := singleRequire(words)
+			if ok {
+				depChan <- *dep
+				return
+			}
 
-		for _, char := range text {
-			fmt.Println(string(char))
-		}
+			dep, ok = repoURL(words)
+			if ok {
+				depChan <- *dep
+				return
+			}
+		}(wg, text)
 	}
 
-	return
+	// send term signal to the channel
+	wg.Wait()
+	depChan <- dependency{url: termSignal}
 }
 
 func singleRequire(words []string) (dep *dependency, ok bool) {
 	// includes indirect comment
-	if len(words) != 3 || len(words) != 5 {
+	if len(words) != 3 && len(words) != 5 {
 		return nil, false
 	}
 
@@ -70,19 +88,40 @@ func singleRequire(words []string) (dep *dependency, ok bool) {
 		return nil, false
 	}
 
-	desc, err := description(words[1])
+	return buildDependency(words[1], words[2]), true
+}
+
+func repoURL(words []string) (dep *dependency, ok bool) {
+	if len(words) != 2 && len(words) != 4 {
+		return nil, false
+	}
+
+	terms := strings.Split(words[0], `/`)
+	if len(terms) == 0 {
+		return nil, false
+	}
+
+	for _, url := range urlList {
+		if terms[0] == url {
+			return buildDependency(words[1], words[2]), true
+		}
+	}
+
+	return nil, false
+}
+
+func buildDependency(path, version string) *dependency {
+	desc, err := description(path)
 	if err != nil {
 		fmt.Printf("get description failed - %s\n", err)
 	}
 
-	dep = &dependency{
-		name:    depName(words[1]),
-		url:     `https://` + words[1],
-		version: depVersion(words[2]),
+	return &dependency{
+		name:    depName(path),
+		url:     `https://` + path,
+		version: depVersion(version),
 		desc:    desc,
 	}
-
-	return dep, true
 }
 
 func depName(path string) string {
@@ -95,11 +134,16 @@ func depVersion(text string) string {
 }
 
 func description(path string) (desc string, err error) {
+	// todo use https://api.github.com/repos/golang-jwt/jwt
 	res, err := http.Get(`https://` + path)
 	if err != nil {
 		return ``, fmt.Errorf(`get request to repo failed - %v`, err)
 	}
 	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return ``, fmt.Errorf("failed status code: %d", res.StatusCode)
+	}
 
 	data, err := ioutil.ReadAll(res.Body)
 	if err != nil {
@@ -109,15 +153,15 @@ func description(path string) (desc string, err error) {
 	var gr gitRes
 	err = json.Unmarshal(data, &gr)
 	if err != nil {
-		return ``, fmt.Errorf(`unmarshal error - %v`, err)
+		return ``, fmt.Errorf(`unmarshal error - %v [%v]`, err, gr)
 	}
 
 	return gr.Description, nil
 }
 
-func addDep() (deps []dependency) {
+func dependencyList() (deps []dependency) {
 	for dep := range depChan {
-		if dep.url == `terminate` {
+		if dep.url == termSignal {
 			return deps
 		}
 		deps = append(deps, dep)

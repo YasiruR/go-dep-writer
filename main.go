@@ -1,8 +1,14 @@
 package main
 
+import "fmt"
+
 var fileName string
 
 func main() {
+	go parse(`go.mod`)
+	deps := dependencyList()
+	fmt.Println(deps)
+
 	//fileName = `readme.md`
 	//generateTable([]dependency{{
 	//	name:    `[google-wire](https://github.com/google/wire)`,
@@ -14,6 +20,4 @@ func main() {
 	//		version: `v1.0`,
 	//		desc:    `test`,
 	//	}})
-
-	fetchDeps(`go.mod`)
 }
