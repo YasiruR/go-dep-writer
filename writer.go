@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func generateTable(rows []row) {
+func generateTable(rows []dependency) {
 	extensions := parser.CommonExtensions | parser.Tables
 	p := parser.NewWithExtensions(extensions)
 	md := []byte(fmt.Sprintf(`
@@ -21,9 +21,9 @@ Dependency | Version | Description
 	write(html)
 }
 
-func rowsToMarkdown(rows []row) (out string) {
+func rowsToMarkdown(rows []dependency) (out string) {
 	for _, r := range rows {
-		out += fmt.Sprintf(`%s        | %s      | %s        `, r.dep, r.version, r.desc)
+		out += fmt.Sprintf("[%s](%s)        | %s      | %s        \n", r.name, r.url, r.version, r.desc)
 	}
 	return out
 }
