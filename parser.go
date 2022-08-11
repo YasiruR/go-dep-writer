@@ -142,6 +142,9 @@ func depName(path string) string {
 }
 
 func depVersion(text string) string {
+	if strings.Contains(text, `+`) {
+		return strings.Split(text, `+`)[0]
+	}
 	return strings.Split(text, `-`)[0]
 }
 
