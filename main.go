@@ -22,12 +22,16 @@ func main() {
 
 func parseArgs() (modFile, outputFile, user, pw string, domains []string) {
 	mf := flag.String(`modfile`, `go.mod`, `relative file path of the go.mod file`)
-	of := flag.String(`output`, `dependencies.md`, `relative file path of the output`)
 	u := flag.String(`user`, ``, `username of github account [optional]`)
 	s := flag.String(`secret`, ``, `secret of github api [optional]`)
 	dl := flag.String(`domains`, ``, `domain list of imports eg:github [optional]`)
+	a := flag.String(`append`, ``, `append to an existing readme [optional]`)
 	flag.Parse()
-	return *mf, *of, *u, *s, domainList(*dl)
+
+	if *a != `` {
+		return *mf, *a, *u, *s, domainList(*dl)
+	}
+	return *mf, `dependencies.md`, *u, *s, domainList(*dl)
 }
 
 func domainList(input string) (list []string) {

@@ -41,9 +41,26 @@ func (w *Writer) rowsToMarkdown(rows []entity.Dependency) (out string) {
 }
 
 func (w *Writer) write(outputFile string, data []byte) error {
-	err := os.WriteFile(outputFile, data, 0644)
-	if err != nil {
-		return fmt.Errorf(`writing to the output file %s failed - %v`, outputFile, err)
+	if outputFile == `dependencies.md` {
+		err := os.WriteFile(outputFile, data, 0644)
+		if err != nil {
+			return fmt.Errorf(`writing to the output file %s failed - %v`, outputFile, err)
+		}
+
+		w.logger.Trace(fmt.Sprintf(`saved output to %s`, outputFile))
+		return nil
 	}
+
+	f, err := os.OpenFile(outputFile, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	if err != nil {
+		w.logger.Fatal(fmt.Sprintf(`invalid file path [%s] - %v`, outputFile, err))
+	}
+	defer f.Close()
+
+	if _, err = f.WriteString(string(data)); err != nil {
+		w.logger.Fatal(fmt.Sprintf(`updating %s failed - %v`, outputFile, err))
+	}
+
+	w.logger.Trace(fmt.Sprintf(`saved output to %s`, outputFile))
 	return nil
 }

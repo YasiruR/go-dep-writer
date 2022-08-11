@@ -33,8 +33,8 @@ func NewParser(user, pw string, domains []string, logger log.Logger) *Parser {
 		token = base64.StdEncoding.EncodeToString([]byte(user + `:` + pw))
 	}
 
-	if domains == nil {
-		domains = []string{github, uber, goPkg, golang}
+	domains = []string{github, uber, goPkg, golang}
+	if len(domains) == 0 {
 	}
 
 	return &Parser{
@@ -47,6 +47,7 @@ func NewParser(user, pw string, domains []string, logger log.Logger) *Parser {
 }
 
 func (p *Parser) Parse(filePath string) {
+	fmt.Println("DOMAINS: ", p.domainList)
 	f, err := os.Open(filePath)
 	if err != nil {
 		p.logger.Fatal(fmt.Sprintf(`opening go mod file failed - %v`, err))
