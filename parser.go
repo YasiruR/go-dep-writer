@@ -14,12 +14,21 @@ import (
 
 const (
 	termSignal = `terminate`
+	github     = `github.com`
+	uber       = `go.uber.org`
+	goPkg      = `gopkg.in`
 )
 
 var (
+	modFile string
 	depChan chan dependency
 	urlList []string
 )
+
+func initReader() {
+	depChan = make(chan dependency, 10)
+	urlList = []string{github, uber, goPkg}
+}
 
 func parse(fileName string) {
 	f, err := os.Open(fileName)
@@ -31,9 +40,11 @@ func parse(fileName string) {
 	scanner := bufio.NewScanner(f)
 	wg := &sync.WaitGroup{}
 
+	i := 0
 	for scanner.Scan() {
 		text := scanner.Text()
 		wg.Add(1)
+		i++
 		go func(wg *sync.WaitGroup, text string) {
 			defer wg.Done()
 			// skip if it is a blank line
@@ -102,8 +113,9 @@ func repoURL(words []string) (dep *dependency, ok bool) {
 	}
 
 	for _, url := range urlList {
-		if terms[0] == url {
-			return buildDependency(words[1], words[2]), true
+		trimmed := strings.TrimSpace(terms[0])
+		if trimmed == url {
+			return buildDependency(strings.TrimSpace(words[0]), words[1]), true
 		}
 	}
 
@@ -134,8 +146,19 @@ func depVersion(text string) string {
 }
 
 func description(path string) (desc string, err error) {
-	// todo use https://api.github.com/repos/golang-jwt/jwt
-	res, err := http.Get(`https://` + path)
+	terms := strings.Split(path, `/`)
+	if len(terms) == 0 {
+		return ``, fmt.Errorf(`empty path`)
+	}
+
+	var apiPath string
+	if terms[0] == github {
+		apiPath = `https://api.github.com/repos/` + terms[len(terms)-2] + `/` + terms[len(terms)-1]
+	} else {
+		return ``, fmt.Errorf(`path not supported for desc`)
+	}
+
+	res, err := http.Get(apiPath)
 	if err != nil {
 		return ``, fmt.Errorf(`get request to repo failed - %v`, err)
 	}

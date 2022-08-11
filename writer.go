@@ -8,6 +8,8 @@ import (
 	"os"
 )
 
+var outputFile string
+
 func generateTable(rows []dependency) {
 	extensions := parser.CommonExtensions | parser.Tables
 	p := parser.NewWithExtensions(extensions)
@@ -29,7 +31,7 @@ func rowsToMarkdown(rows []dependency) (out string) {
 }
 
 func write(data []byte) {
-	err := os.WriteFile(fileName, data, 0644)
+	err := os.WriteFile(outputFile, data, 0644)
 	if err != nil {
 		log.Fatalln(err)
 	}

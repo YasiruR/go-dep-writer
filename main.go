@@ -1,23 +1,21 @@
 package main
 
-import "fmt"
-
-var fileName string
+import (
+	"flag"
+)
 
 func main() {
-	go parse(`go.mod`)
+	parseArgs()
+	initReader()
+	go parse(modFile)
 	deps := dependencyList()
-	fmt.Println(deps)
 
-	//fileName = `readme.md`
-	//generateTable([]dependency{{
-	//	name:    `[google-wire](https://github.com/google/wire)`,
-	//	version: `v0.5.0`,
-	//	desc:    `dependency injection library`,
-	//},
-	//	{
-	//		name:    `[uber-zap](https://github.com/uber-go/zap)`,
-	//		version: `v1.0`,
-	//		desc:    `test`,
-	//	}})
+	generateTable(deps)
+}
+
+func parseArgs() {
+	mf := flag.String(`modfile`, `go.mod`, `relative file path of the go.mod file`)
+	of := flag.String(`output`, `dependencies.md`, `relative file path of the output`)
+	flag.Parse()
+	modFile, outputFile = *mf, *of
 }
