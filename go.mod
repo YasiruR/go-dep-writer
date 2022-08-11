@@ -10,6 +10,7 @@ require (
 require (
 	github.com/logrusorgru/aurora v0.0.0-20200102142835-e9ef32dff381 // indirect
 	github.com/rs/zerolog v1.22.0 // indirect
+	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
 
 require golang.org/x/net v0.0.0-20210916014120-12bc252f5db8

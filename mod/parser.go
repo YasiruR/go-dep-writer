@@ -17,7 +17,7 @@ import (
 	"sync"
 )
 
-// todo append to existing readme
+// todo golang.org/x/net gopkg.in/yaml.v2
 
 type Parser struct {
 	token      string
@@ -47,7 +47,6 @@ func NewParser(user, pw string, domains []string, logger log.Logger) *Parser {
 }
 
 func (p *Parser) Parse(filePath string) {
-	fmt.Println("DOMAINS: ", p.domainList)
 	f, err := os.Open(filePath)
 	if err != nil {
 		p.logger.Fatal(fmt.Sprintf(`opening go mod file failed - %v`, err))
@@ -140,7 +139,7 @@ func (p *Parser) repoURL(words []string) (dep *entity.Dependency, ok bool) {
 func (p *Parser) buildDependency(path, version string) *entity.Dependency {
 	// checks if path contains a version in the last component
 	terms := strings.Split(path, `/`)
-	matched, err := regexp.MatchString("v[0-9]", terms[len(terms)-1])
+	matched, err := regexp.MatchString("^[v 0-9]*$", terms[len(terms)-1])
 	if err != nil {
 		p.logger.Error(fmt.Sprintf(`regex failed - %v`, err))
 	}
@@ -237,7 +236,7 @@ func (p *Parser) extractDescGithub(url string) (desc string, err error) {
 }
 
 func (p *Parser) extractDescGoPkg(url string) (desc string, err error) {
-	res, err := http.Get(url)
+	res, err := p.client.Get(url)
 	if err != nil {
 		return ``, fmt.Errorf(`get request to go pkg failed - %v`, err)
 	}

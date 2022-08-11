@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"github.com/YasiruR/go-dep-writer/entity"
 	"github.com/YasiruR/go-dep-writer/markdown"
 	"github.com/YasiruR/go-dep-writer/mod"
 	"github.com/tryfix/log"
@@ -31,7 +32,7 @@ func parseArgs() (modFile, outputFile, user, pw string, domains []string) {
 	if *a != `` {
 		return *mf, *a, *u, *s, domainList(*dl)
 	}
-	return *mf, `dependencies.md`, *u, *s, domainList(*dl)
+	return *mf, entity.DefaultFileName, *u, *s, domainList(*dl)
 }
 
 func domainList(input string) (list []string) {
