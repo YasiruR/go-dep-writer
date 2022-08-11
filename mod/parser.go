@@ -17,8 +17,6 @@ import (
 	"sync"
 )
 
-// todo add dependencies with version url (github.com/caarlos0/env/v6)
-// todo env var domains
 // todo append to existing readme
 
 type Parser struct {
@@ -29,16 +27,20 @@ type Parser struct {
 	logger     log.Logger
 }
 
-func NewParser(user, pw string, logger log.Logger) *Parser {
+func NewParser(user, pw string, domains []string, logger log.Logger) *Parser {
 	var token string
 	if user != `` && pw != `` {
 		token = base64.StdEncoding.EncodeToString([]byte(user + `:` + pw))
 	}
 
+	if domains == nil {
+		domains = []string{github, uber, goPkg, golang}
+	}
+
 	return &Parser{
 		token:      token,
 		depChan:    make(chan entity.Dependency, 50),
-		domainList: []string{github, uber, goPkg, golang},
+		domainList: domains,
 		client:     &http.Client{},
 		logger:     logger,
 	}
