@@ -12,6 +12,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"sync"
 )
@@ -134,6 +135,24 @@ func (p *Parser) repoURL(words []string) (dep *entity.Dependency, ok bool) {
 }
 
 func (p *Parser) buildDependency(path, version string) *entity.Dependency {
+	// checks if path contains a version in the last component
+	terms := strings.Split(path, `/`)
+	matched, err := regexp.MatchString("v[0-9]", terms[len(terms)-1])
+	if err != nil {
+		p.logger.Error(fmt.Sprintf(`regex failed - %v`, err))
+	}
+
+	if matched {
+		path = ``
+		for i, term := range terms {
+			if i == len(terms)-2 {
+				path += term
+				break
+			}
+			path += term + `/`
+		}
+	}
+
 	desc, err := p.description(path)
 	if err != nil {
 		p.logger.Error(fmt.Sprintf("get description failed - %s", err))
