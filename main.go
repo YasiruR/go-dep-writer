@@ -1,27 +1,29 @@
 package main
 
 import (
-	"encoding/base64"
 	"flag"
+	"github.com/YasiruR/go-dep-writer/markdown"
+	"github.com/YasiruR/go-dep-writer/mod"
+	"github.com/tryfix/log"
 )
 
 func main() {
-	parseArgs()
-	initReader()
-	go parseModFile(modFile)
-	deps := dependencyList()
-	generateTable(deps)
+	modFile, outputFile, user, pw := parseArgs()
+	logger := log.Constructor.Log(log.WithColors(true), log.WithLevel("DEBUG"), log.WithFilePath(true))
+
+	p := mod.NewParser(user, pw, logger)
+	go p.Parse(modFile)
+	deps := p.DependencyList()
+
+	w := markdown.NewWriter(logger)
+	w.GenerateTable(outputFile, deps)
 }
 
-func parseArgs() {
+func parseArgs() (modFile, outputFile, user, pw string) {
 	mf := flag.String(`modfile`, `go.mod`, `relative file path of the go.mod file`)
 	of := flag.String(`output`, `dependencies.md`, `relative file path of the output`)
 	u := flag.String(`user`, ``, `username of github account [optional]`)
 	s := flag.String(`secret`, ``, `secret of github api [optional]`)
 	flag.Parse()
-
-	modFile, outputFile = *mf, *of
-	if *u != `` && *s != `` {
-		token = base64.StdEncoding.EncodeToString([]byte(*u + `:` + *s))
-	}
+	return *mf, *of, *u, *s
 }

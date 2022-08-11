@@ -1,13 +1,7 @@
-package main
+package entity
 
-type dependency struct {
-	name    string
-	url     string
-	version string
-	desc    string
-}
-
-type gitRes struct {
+// todo remove unnecessary
+type GithubResponse struct {
 	AllowForking     bool   `json:"allow_forking"`
 	ArchiveURL       string `json:"archive_url"`
 	Archived         bool   `json:"archived"`

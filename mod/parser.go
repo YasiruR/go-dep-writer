@@ -1,45 +1,52 @@
-package main
+package mod
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/YasiruR/go-dep-writer/entity"
+	"github.com/tryfix/log"
 	"golang.org/x/net/html"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strings"
 	"sync"
 )
 
-const (
-	termSignal = `terminate`
-	github     = `github.com` // todo env var
-	uber       = `go.uber.org`
-	goPkg      = `gopkg.in`
-	golang     = `golang.org`
-)
+// todo add dependencies with version url (github.com/caarlos0/env/v6)
+// todo env var domains
+// todo append to existing readme
 
-var (
-	modFile string
-	token   string
-	depChan chan dependency
-	urlList []string
-	client  *http.Client
-)
-
-func initReader() {
-	depChan = make(chan dependency, 50)
-	urlList = []string{github, uber, goPkg, golang}
-	client = &http.Client{}
+type Parser struct {
+	token      string
+	depChan    chan entity.Dependency
+	domainList []string
+	client     *http.Client
+	logger     log.Logger
 }
 
-func parseModFile(fileName string) {
-	f, err := os.Open(fileName)
+func NewParser(user, pw string, logger log.Logger) *Parser {
+	var token string
+	if user != `` && pw != `` {
+		token = base64.StdEncoding.EncodeToString([]byte(user + `:` + pw))
+	}
+
+	return &Parser{
+		token:      token,
+		depChan:    make(chan entity.Dependency, 50),
+		domainList: []string{github, uber, goPkg, golang},
+		client:     &http.Client{},
+		logger:     logger,
+	}
+}
+
+func (p *Parser) Parse(filePath string) {
+	f, err := os.Open(filePath)
 	if err != nil {
-		log.Fatalln(err)
+		p.logger.Fatal(fmt.Sprintf(`opening go mod file failed - %v`, err))
 	}
 	defer f.Close()
 
@@ -70,15 +77,15 @@ func parseModFile(fileName string) {
 				return
 			}
 
-			dep, ok := singleRequire(words)
+			dep, ok := p.singleRequire(words)
 			if ok {
-				depChan <- *dep
+				p.depChan <- *dep
 				return
 			}
 
-			dep, ok = repoURL(words)
+			dep, ok = p.repoURL(words)
 			if ok {
-				depChan <- *dep
+				p.depChan <- *dep
 				return
 			}
 		}(wg, text)
@@ -86,10 +93,10 @@ func parseModFile(fileName string) {
 
 	// send term signal to the channel
 	wg.Wait()
-	depChan <- dependency{url: termSignal}
+	p.depChan <- entity.Dependency{URL: termSignal}
 }
 
-func singleRequire(words []string) (dep *dependency, ok bool) {
+func (p *Parser) singleRequire(words []string) (dep *entity.Dependency, ok bool) {
 	// includes indirect comment
 	if len(words) != 3 && len(words) != 5 {
 		return nil, false
@@ -103,10 +110,10 @@ func singleRequire(words []string) (dep *dependency, ok bool) {
 		return nil, false
 	}
 
-	return buildDependency(words[1], words[2]), true
+	return p.buildDependency(words[1], words[2]), true
 }
 
-func repoURL(words []string) (dep *dependency, ok bool) {
+func (p *Parser) repoURL(words []string) (dep *entity.Dependency, ok bool) {
 	if len(words) != 2 && len(words) != 4 {
 		return nil, false
 	}
@@ -116,43 +123,43 @@ func repoURL(words []string) (dep *dependency, ok bool) {
 		return nil, false
 	}
 
-	for _, url := range urlList {
+	for _, domain := range p.domainList {
 		trimmed := strings.TrimSpace(terms[0])
-		if trimmed == url {
-			return buildDependency(strings.TrimSpace(words[0]), words[1]), true
+		if trimmed == domain {
+			return p.buildDependency(strings.TrimSpace(words[0]), words[1]), true
 		}
 	}
 
 	return nil, false
 }
 
-func buildDependency(path, version string) *dependency {
-	desc, err := description(path)
+func (p *Parser) buildDependency(path, version string) *entity.Dependency {
+	desc, err := p.description(path)
 	if err != nil {
-		fmt.Printf("get description failed - %s\n", err)
+		p.logger.Error(fmt.Sprintf("get description failed - %s", err))
 	}
 
-	return &dependency{
-		name:    depName(path),
-		url:     `https://` + path,
-		version: depVersion(version),
-		desc:    desc,
+	return &entity.Dependency{
+		Name:    p.depName(path),
+		URL:     `https://` + path,
+		Version: p.depVersion(version),
+		Desc:    desc,
 	}
 }
 
-func depName(path string) string {
+func (p *Parser) depName(path string) string {
 	terms := strings.Split(path, `/`)
 	return terms[len(terms)-1]
 }
 
-func depVersion(text string) string {
+func (p *Parser) depVersion(text string) string {
 	if strings.Contains(text, `+`) {
 		return strings.Split(text, `+`)[0]
 	}
 	return strings.Split(text, `-`)[0]
 }
 
-func description(path string) (desc string, err error) {
+func (p *Parser) description(path string) (desc string, err error) {
 	terms := strings.Split(path, `/`)
 	if len(terms) == 0 {
 		return ``, fmt.Errorf(`empty path`)
@@ -160,18 +167,18 @@ func description(path string) (desc string, err error) {
 
 	switch terms[0] {
 	case github:
-		return extractDescGithub(`https://api.github.com/repos/` + terms[len(terms)-2] + `/` + terms[len(terms)-1])
+		return p.extractDescGithub(`https://api.github.com/repos/` + terms[len(terms)-2] + `/` + terms[len(terms)-1])
 	case uber:
-		return extractDescGoPkg(`https://` + path)
+		return p.extractDescGoPkg(`https://` + path)
 	default:
 		return ``, fmt.Errorf(`path [%s] not supported for desc`, path)
 	}
 }
 
-func extractDescGithub(url string) (desc string, err error) {
+func (p *Parser) extractDescGithub(url string) (desc string, err error) {
 	var res *http.Response
-	if token == `` {
-		res, err = client.Get(url)
+	if p.token == `` {
+		res, err = p.client.Get(url)
 		if err != nil {
 			return ``, fmt.Errorf(`get request to github failed - %v`, err)
 		}
@@ -180,9 +187,9 @@ func extractDescGithub(url string) (desc string, err error) {
 		if err != nil {
 			return ``, fmt.Errorf(`creating new request failed - %v`, err)
 		}
-		req.Header.Add(`Authorization`, `Basic `+token)
+		req.Header.Add(`Authorization`, `Basic `+p.token)
 
-		res, err = client.Do(req)
+		res, err = p.client.Do(req)
 		if err != nil {
 			return ``, fmt.Errorf(`get request with auth to github failed - %v`, err)
 		}
@@ -198,7 +205,7 @@ func extractDescGithub(url string) (desc string, err error) {
 		return ``, fmt.Errorf(`reading response body failed - %v`, err)
 	}
 
-	var gr gitRes
+	var gr entity.GithubResponse
 	err = json.Unmarshal(data, &gr)
 	if err != nil {
 		return ``, fmt.Errorf(`unmarshal error - %v [%v]`, err, gr)
@@ -207,7 +214,7 @@ func extractDescGithub(url string) (desc string, err error) {
 	return gr.Description, nil
 }
 
-func extractDescGoPkg(url string) (desc string, err error) {
+func (p *Parser) extractDescGoPkg(url string) (desc string, err error) {
 	res, err := http.Get(url)
 	if err != nil {
 		return ``, fmt.Errorf(`get request to go pkg failed - %v`, err)
@@ -242,7 +249,7 @@ func extractDescGoPkg(url string) (desc string, err error) {
 					terms := strings.Split(string(attrValue), ` `)
 					for _, term := range terms {
 						if strings.Contains(term, `https://`+github) {
-							return description(strings.ReplaceAll(term, `https://`, ``))
+							return p.description(strings.ReplaceAll(term, `https://`, ``))
 						}
 					}
 				}
@@ -251,9 +258,9 @@ func extractDescGoPkg(url string) (desc string, err error) {
 	}
 }
 
-func dependencyList() (deps []dependency) {
-	for dep := range depChan {
-		if dep.url == termSignal {
+func (p *Parser) DependencyList() (deps []entity.Dependency) {
+	for dep := range p.depChan {
+		if dep.URL == termSignal {
 			return deps
 		}
 		deps = append(deps, dep)
