@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/net/html"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -14,23 +16,27 @@ import (
 
 const (
 	termSignal = `terminate`
-	github     = `github.com`
+	github     = `github.com` // todo env var
 	uber       = `go.uber.org`
 	goPkg      = `gopkg.in`
+	golang     = `golang.org`
 )
 
 var (
 	modFile string
+	token   string
 	depChan chan dependency
 	urlList []string
+	client  *http.Client
 )
 
 func initReader() {
-	depChan = make(chan dependency, 10)
-	urlList = []string{github, uber, goPkg}
+	depChan = make(chan dependency, 50)
+	urlList = []string{github, uber, goPkg, golang}
+	client = &http.Client{}
 }
 
-func parse(fileName string) {
+func parseModFile(fileName string) {
 	f, err := os.Open(fileName)
 	if err != nil {
 		log.Fatalln(err)
@@ -40,11 +46,9 @@ func parse(fileName string) {
 	scanner := bufio.NewScanner(f)
 	wg := &sync.WaitGroup{}
 
-	i := 0
 	for scanner.Scan() {
 		text := scanner.Text()
 		wg.Add(1)
-		i++
 		go func(wg *sync.WaitGroup, text string) {
 			defer wg.Done()
 			// skip if it is a blank line
@@ -154,21 +158,39 @@ func description(path string) (desc string, err error) {
 		return ``, fmt.Errorf(`empty path`)
 	}
 
-	var apiPath string
-	if terms[0] == github {
-		apiPath = `https://api.github.com/repos/` + terms[len(terms)-2] + `/` + terms[len(terms)-1]
-	} else {
-		return ``, fmt.Errorf(`path not supported for desc`)
+	switch terms[0] {
+	case github:
+		return extractDescGithub(`https://api.github.com/repos/` + terms[len(terms)-2] + `/` + terms[len(terms)-1])
+	case uber:
+		return extractDescGoPkg(`https://` + path)
+	default:
+		return ``, fmt.Errorf(`path [%s] not supported for desc`, path)
 	}
+}
 
-	res, err := http.Get(apiPath)
-	if err != nil {
-		return ``, fmt.Errorf(`get request to repo failed - %v`, err)
+func extractDescGithub(url string) (desc string, err error) {
+	var res *http.Response
+	if token == `` {
+		res, err = client.Get(url)
+		if err != nil {
+			return ``, fmt.Errorf(`get request to github failed - %v`, err)
+		}
+	} else {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return ``, fmt.Errorf(`creating new request failed - %v`, err)
+		}
+		req.Header.Add(`Authorization`, `Basic `+token)
+
+		res, err = client.Do(req)
+		if err != nil {
+			return ``, fmt.Errorf(`get request with auth to github failed - %v`, err)
+		}
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode != http.StatusOK {
-		return ``, fmt.Errorf("failed status code: %d", res.StatusCode)
+		return ``, fmt.Errorf("status code: %d", res.StatusCode)
 	}
 
 	data, err := ioutil.ReadAll(res.Body)
@@ -183,6 +205,50 @@ func description(path string) (desc string, err error) {
 	}
 
 	return gr.Description, nil
+}
+
+func extractDescGoPkg(url string) (desc string, err error) {
+	res, err := http.Get(url)
+	if err != nil {
+		return ``, fmt.Errorf(`get request to go pkg failed - %v`, err)
+	}
+	defer res.Body.Close()
+
+	if res.StatusCode != http.StatusOK {
+		return ``, fmt.Errorf(`status code: %d`, res.StatusCode)
+	}
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		return ``, fmt.Errorf(`reading body failed`)
+	}
+
+	reader := strings.NewReader(string(body))
+	tokenizer := html.NewTokenizer(reader)
+	for {
+		tt := tokenizer.Next()
+		if tt == html.ErrorToken {
+			if tokenizer.Err() == io.EOF {
+				return
+			}
+			return ``, fmt.Errorf(`tokenizer error - %v`, tokenizer.Err())
+		}
+
+		_, hasAttr := tokenizer.TagName()
+		if hasAttr {
+			for {
+				attrKey, attrValue, _ := tokenizer.TagAttr()
+				if string(attrKey) == `content` {
+					terms := strings.Split(string(attrValue), ` `)
+					for _, term := range terms {
+						if strings.Contains(term, `https://`+github) {
+							return description(strings.ReplaceAll(term, `https://`, ``))
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 func dependencyList() (deps []dependency) {
