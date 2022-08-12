@@ -2,7 +2,7 @@ package mod
 
 const (
 	termSignal = `terminate`
-	github     = `github.com` // todo env var
+	github     = `github.com`
 	uber       = `go.uber.org`
 	goPkg      = `gopkg.in`
 	golang     = `golang.org`

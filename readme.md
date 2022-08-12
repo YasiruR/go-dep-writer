@@ -26,8 +26,8 @@ a quota.
   - If provided, generated table will be appended to the given file. If not provided,
 table will be saved to dependencies.md file in the current working directory.
 - **domains** [optional]
-  - To save imports with specific domains. Only github.com, go.uber.org,
-gopkg.in and golang.org are supported (and all enabled by default).
+  - To save imports with specific domains. Input value should be a list separated by
+commas. Currently, only github.com, go.uber.org, gopkg.in and golang.org are supported (and all enabled by default).
 
 ## Sample Output
 

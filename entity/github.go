@@ -1,6 +1,5 @@
 package entity
 
-// todo remove unnecessary
 type GithubResponse struct {
 	AllowForking     bool   `json:"allow_forking"`
 	ArchiveURL       string `json:"archive_url"`

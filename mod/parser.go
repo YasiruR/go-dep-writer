@@ -17,8 +17,6 @@ import (
 	"sync"
 )
 
-// todo golang.org/x/net gopkg.in/yaml.v2
-
 type Parser struct {
 	token      string
 	depChan    chan entity.Dependency
@@ -80,12 +78,14 @@ func (p *Parser) Parse(filePath string) {
 				return
 			}
 
+			// handles single imports starting with require
 			dep, ok := p.singleRequire(words)
 			if ok {
 				p.depChan <- *dep
 				return
 			}
 
+			// handles import batches closed by parentheses
 			dep, ok = p.repoURL(words)
 			if ok {
 				p.depChan <- *dep
@@ -94,7 +94,7 @@ func (p *Parser) Parse(filePath string) {
 		}(wg, text)
 	}
 
-	// send term signal to the channel
+	// sends term signal to the channel
 	wg.Wait()
 	p.depChan <- entity.Dependency{URL: termSignal}
 }
